@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ONU Tigers 3D Logo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            /* ONU Tigers Purple Background */
+            background-color: #48206E; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 280px;
+            background: rgba(0, 0, 0, 0.5); /* Darker, more transparent */
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            user-select: none;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            /* ONU Tigers Orange/Red for Title */
+            color: #DD3C27; 
+            text-align: center;
+            font-weight: 800;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.8rem;
+            color: #ddd;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: #DD3C27;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+
+        /* Explode Button: #DD3C27 */
+        .btn-explode {
+            background: #DD3C27;
+            color: white;
+            box-shadow: 0 4px 15px rgba(221, 60, 39, 0.4);
+        }
+
+        .btn-explode:hover {
+            background: #ff5e4d;
+            transform: translateY(-2px);
+        }
+
+        /* Reform Button: #FDB913 */
+        .btn-reform {
+            background: #FDB913;
+            color: #48206E; /* Dark text for contrast on yellow */
+            box-shadow: 0 4px 15px rgba(253, 185, 19, 0.4);
+        }
+
+        .btn-reform:hover {
+            background: #ffcf5c;
+            transform: translateY(-2px);
+        }
+
+        .instruction {
+            margin-top: 15px;
+            font-size: 0.7rem;
+            color: #ccc;
+            text-align: center;
+            border-top: 1px solid #555;
+            padding-top: 10px;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            color: #FDB913;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">Loading ONU Particles...<br><span style="font-size: 0.8rem; color: #fff; font-weight: normal;">(Ensure image is named correctly)</span></div>
+
+    <div id="ui-container">
+        <h2>ONU Tigers Logo</h2>
+        
+        <div class="control-group">
+            <label for="speedX">Rotation Speed X</label>
+            <!-- Adjusted min/step for VERY slow rotation capability -->
+            <input type="range" id="speedX" min="-0.03" max="0.03" step="0.0001" value="0.002">
+        </div>
+
+        <div class="control-group">
+            <label for="speedY">Rotation Speed Y</label>
+            <input type="range" id="speedY" min="-0.03" max="0.03" step="0.0001" value="0.004">
+        </div>
+
+        <div class="control-group">
+            <label for="particleSize">Particle Size</label>
+            <input type="range" id="particleSize" min="0.5" max="5" step="0.1" value="2.0">
+        </div>
+        
+        <div class="control-group">
+            <label for="colorPicker">Theme Color</label>
+            <!-- Default set to ONU Red/Orange #DD3C27 -->
+            <input type="color" id="colorPicker" value="#DD3C27" style="width: 100%; border: none; height: 30px; cursor: pointer;">
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-explode" onclick="explode()">Explode</button>
+            <button class="btn-reform" onclick="reform()">Reform</button>
+        </div>
+
+        <div class="instruction">
+            Drag mouse to rotate view.<br>
+            Scroll to zoom.
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- Configuration ---
+        const CONFIG = {
+            imageSrc: "Style-Guide-Webpage-ONUTiger (1).png", // Tries this first
+            fallbackText: "ONU",    // Fallback if image fails
+            font: "900 100px Arial",
+            particleGap: 2,         // Density (1 = high detail, 4 = low detail)
+            explosionRadius: 600,   
+            reformSpeed: 0.04,
+            explodeSpeed: 0.06,
+            width: 200,             // Canvas scan resolution (increase for more detail)
+            height: 200             // Square aspect ratio for logos
+        };
+
+        // --- Global Variables ---
+        let scene, camera, renderer;
+        let particleSystem, particlesGeometry;
+        let particleData = []; 
+        let isExploded = false;
+        let targetState = 'reformed'; 
+        let mouseX = 0, mouseY = 0;
+        let windowHalfX = window.innerWidth / 2;
+        let windowHalfY = window.innerHeight / 2;
+        
+        // Settings from UI
+        let settings = {
+            rotSpeedX: 0.002,
+            rotSpeedY: 0.004
+        };
+
+        // Initialize Application
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // 1. Setup Scene
+            scene = new THREE.Scene();
+            // Fog matches background color #48206E
+            scene.fog = new THREE.FogExp2(0x48206E, 0.0015);
+
+            // 2. Setup Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
+            camera.position.z = 400;
+
+            // 3. Setup Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            // 4. Generate Particles (Image or Text)
+            createLogoParticles();
+
+            // 5. Event Listeners
+            document.addEventListener('mousemove', onDocumentMouseMove, false);
+            window.addEventListener('resize', onWindowResize, false);
+            setupUI();
+        }
+
+        // --- Core Logic: Create Particles ---
+        function createLogoParticles() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = CONFIG.width;
+            canvas.height = CONFIG.height;
+
+            const img = new Image();
+            img.crossOrigin = "Anonymous"; // Helpful for some local server setups
+            
+            // Try to load the user's image
+            img.onload = function() {
+                // Keep aspect ratio
+                const aspect = img.width / img.height;
+                let drawWidth = CONFIG.width;
+                let drawHeight = CONFIG.height;
+                
+                if (aspect > 1) {
+                    drawHeight = CONFIG.width / aspect;
+                } else {
+                    drawWidth = CONFIG.height * aspect;
+                }
+                
+                // Center image
+                const xOffset = (CONFIG.width - drawWidth) / 2;
+                const yOffset = (CONFIG.height - drawHeight) / 2;
+
+                ctx.drawImage(img, xOffset, yOffset, drawWidth, drawHeight);
+                processParticles(ctx);
+                document.getElementById('loading').style.opacity = 0;
+            };
+
+            // Fallback to text if image not found
+            img.onerror = function() {
+                console.log("Image not found, using text fallback.");
+                ctx.fillStyle = 'black'; // Clear
+                ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = CONFIG.font;
+                ctx.fillText(CONFIG.fallbackText, CONFIG.width / 2, CONFIG.height / 2);
+                processParticles(ctx);
+                document.getElementById('loading').innerHTML = "Image not found.<br>Rendering Text.";
+                setTimeout(() => { document.getElementById('loading').style.opacity = 0; }, 1000);
+            };
+
+            // Set source (Matches the file name provided)
+            img.src = CONFIG.imageSrc;
+        }
+
+        function processParticles(ctx) {
+            const imageData = ctx.getImageData(0, 0, CONFIG.width, CONFIG.height).data;
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const colors = [];
+            particleData = [];
+
+            // Initial color matching #DD3C27
+            const baseColor = new THREE.Color(0xDD3C27);
+
+            // Loop through pixels
+            for (let y = 0; y < CONFIG.height; y += CONFIG.particleGap) {
+                for (let x = 0; x < CONFIG.width; x += CONFIG.particleGap) {
+                    
+                    const index = (x + y * CONFIG.width) * 4;
+                    const r = imageData[index];
+                    const g = imageData[index + 1];
+                    const b = imageData[index + 2];
+                    const a = imageData[index + 3];
+                    
+                    // If pixel is visible
+                    if (a > 128 || (r + g + b) > 100) { 
+                        // Calculate centered 3D position
+                        // Multiply by spacer to spread them out
+                        const pX = (x - CONFIG.width / 2) * 3; 
+                        const pY = -(y - CONFIG.height / 2) * 3; 
+                        const pZ = 0;
+
+                        positions.push(pX, pY, pZ);
+                        
+                        // Use pixel color or theme color? 
+                        // Let's mix them. If it's a loaded image, use pixel color.
+                        // If it's text (white), use theme color.
+                        if (r > 200 && g > 200 && b > 200) {
+                            colors.push(baseColor.r, baseColor.g, baseColor.b);
+                        } else {
+                            // Use actual image color normalized
+                            colors.push(r/255, g/255, b/255);
+                        }
+
+                        // Calculate Random Explosion Target
+                        const expX = pX + (Math.random() - 0.5) * CONFIG.explosionRadius * 2;
+                        const expY = pY + (Math.random() - 0.5) * CONFIG.explosionRadius * 2;
+                        const expZ = (Math.random() - 0.5) * CONFIG.explosionRadius * 2;
+
+                        particleData.push({
+                            home: new THREE.Vector3(pX, pY, pZ),
+                            target: new THREE.Vector3(expX, expY, expZ),
+                            current: new THREE.Vector3(pX, pY, pZ),
+                            velocity: new THREE.Vector3(0,0,0)
+                        });
+                    }
+                }
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 2.0,
+                vertexColors: true,
+                sizeAttenuation: true,
+                transparent: true,
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending
+            });
+
+            if(particleSystem) scene.remove(particleSystem);
+            particleSystem = new THREE.Points(geometry, material);
+            scene.add(particleSystem);
+            particlesGeometry = geometry;
+        }
+
+        // --- Interaction Logic ---
+
+        function setupUI() {
+            // Speed Controls
+            document.getElementById('speedX').addEventListener('input', (e) => {
+                settings.rotSpeedX = parseFloat(e.target.value);
+            });
+            document.getElementById('speedY').addEventListener('input', (e) => {
+                settings.rotSpeedY = parseFloat(e.target.value);
+            });
+            
+            // Size Control
+            document.getElementById('particleSize').addEventListener('input', (e) => {
+                if(particleSystem) {
+                    particleSystem.material.size = parseFloat(e.target.value);
+                }
+            });
+
+            // Color Control
+            document.getElementById('colorPicker').addEventListener('input', (e) => {
+                const hex = e.target.value;
+                const col = new THREE.Color(hex);
+                // Update title color
+                document.querySelector('h2').style.color = hex;
+                
+                if(!particlesGeometry) return;
+                
+                const colors = particlesGeometry.attributes.color.array;
+                
+                // Update all vertex colors
+                for (let i = 0; i < colors.length; i += 3) {
+                    colors[i] = col.r;
+                    colors[i+1] = col.g;
+                    colors[i+2] = col.b;
+                }
+                particlesGeometry.attributes.color.needsUpdate = true;
+            });
+        }
+
+        function explode() {
+            targetState = 'exploded';
+        }
+
+        function reform() {
+            targetState = 'reformed';
+        }
+
+        function onWindowResize() {
+            windowHalfX = window.innerWidth / 2;
+            windowHalfY = window.innerHeight / 2;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onDocumentMouseMove(event) {
+            mouseX = (event.clientX - windowHalfX) * 0.5;
+            mouseY = (event.clientY - windowHalfY) * 0.5;
+        }
+
+        // --- Animation Loop ---
+
+        function animate() {
+            requestAnimationFrame(animate);
+            render();
+        }
+
+        function render() {
+            if (!particleSystem) return;
+
+            // 1. Handle Whole Group Rotation
+            particleSystem.rotation.x += settings.rotSpeedX;
+            particleSystem.rotation.y += settings.rotSpeedY;
+
+            // 2. Parallax Effect (Mouse follow)
+            // Gently tilt the camera based on mouse position
+            camera.position.x += (mouseX - camera.position.x) * 0.05;
+            camera.position.y += (-mouseY - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+
+            // 3. Particle Physics (Explosion/Reform)
+            const positions = particlesGeometry.attributes.position.array;
+            
+            // Speed factor determines how snappy the animation is
+            const speed = targetState === 'exploded' ? CONFIG.explodeSpeed : CONFIG.reformSpeed;
+
+            for (let i = 0; i < particleData.length; i++) {
+                const data = particleData[i];
+                const target = targetState === 'exploded' ? data.target : data.home;
+
+                // Simple Lerp (Linear Interpolation) for smooth movement
+                data.current.x += (target.x - data.current.x) * speed;
+                data.current.y += (target.y - data.current.y) * speed;
+                data.current.z += (target.z - data.current.z) * speed;
+
+                // Add some noise/jitter when exploding for realism
+                if (targetState === 'exploded') {
+                    data.current.x += (Math.random() - 0.5) * 2;
+                    data.current.y += (Math.random() - 0.5) * 2;
+                    data.current.z += (Math.random() - 0.5) * 2;
+                }
+
+                // Update Geometry Buffer
+                positions[i * 3] = data.current.x;
+                positions[i * 3 + 1] = data.current.y;
+                positions[i * 3 + 2] = data.current.z;
+            }
+
+            particlesGeometry.attributes.position.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+    </script>
+</body>
+</html>
